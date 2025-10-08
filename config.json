@@ -1,0 +1,110 @@
+{
+    "scripts": [
+        {
+            "file": "newtons_divided_difference.py",
+            "name": "Newton's Divided Difference Interpolation Method",
+            "description": "Newton's Divided Difference Interpolation Method is a numerical technique used to estimate the value of a function for any intermediate point within a given data set. It constructs an interpolating polynomial using divided differences, which are based on the differences between known data points. ",
+            "authors": [
+                "Albiso, Dohn Lourie",
+                "Casama, Ric Jay",
+                "Ellacone, Kesiah Cassandra",
+                "Gamil, Claire Marie",
+                "Lumpay, Jan Melbert"
+            ]
+        },
+        {
+            "file": "lagrange_method.py",
+            "name": "Lagrange Interpolation Method",
+            "description": "Lagrange Interpolation is a method used to find a single polynomial that passes exactly through a given set of known points. It helps estimate values between those points by creating a smooth curve that fits all of them.",
+            "authors": [
+                "Pulvera, James Kent Gabriel",
+                "Minoza, William Maximus",
+                "Vina, Janrey L.",
+                "Yanez, Nick Andrew W."
+            ]
+        },
+        {
+            "file": "brents_method.py",
+            "name": "Brent's Method",
+            "description": "Brent's Method is a hybrid root-finding algorithm that combines the reliability of the bisection method with the speed of the secant and inverse quadratic interpolation methods. It starts with two points where the function changes sign and then adaptively switches between these three techniques to find a root efficiently and accurately.",
+            "authors": [
+                "Ganzan, Patrick Allen",
+                "Hinosolango, Kyll",
+                "Platitas, Kirt",
+                "Roa, Ralph Joseph",
+                "Vale, Arxil John"
+            ]
+        },
+        {
+            "file": "bisection_method.py",
+            "name": "Bisection Method",
+            "description": "The bisection method is a simple numerical technique for finding roots of a continuous function. It works by repeatedly narrowing an interval [a,b] where the function changes sign (i.e., f(a)⋅f(b)<0).",
+            "authors": [
+                "Capanag, Frency Mae",
+                "Galceran, Sherwin",
+                "Lumasag, Van Xyrene Myrell",
+                "Pacheco, Pamela",
+                "Tampos, Naz Ciana"
+            ]
+        },
+        {
+            "file": "false_position_method.py",
+            "name": "False Position Method (Regula Falsi)",
+            "description": "The False Position Method (Regula Falsi) is a numerical technique used to find the root of a nonlinear equation by iteratively drawing a straight line between two points with opposite function signs and finding the x-intercept of this line as a closer approximation of the root. It combines bracketing with linear interpolation to efficiently narrow down the interval containing the root until the desired accuracy is achieved.",
+            "authors": [
+                "Cena, Chloe Shanelle",
+                "Mercado, Glaiza",
+                "Saludes, Isabela Loren",
+                "Saludes, Zaira Loren",
+                "Sanchez, Crystal Mae"
+            ]
+        },
+        {
+            "file": "simple_fixed_point_iteration_method.py",
+            "name": "Simple Fixed-Point Iteration Method",
+            "description": "Simple fixed-point iteration is a method of repeatedly applying a function to an initial guess to gradually approach a stable solution where the guess no longer changes.",
+            "authors": [
+                "Villacorta, Ernest Louis S.",
+                "Austria, Abigail",
+                "Mino, Marc Paolo",
+                "Timogan, Ryan",
+                "Tarde, Glen"
+            ]
+        },
+        {
+            "file": "newton_raphson_method.py",
+            "name": "Newton Raphson Method",
+            "description": "The Newton-Raphson Method, also known as the Newton Method, is an open iterative technique used to find the roots of nonlinear equations of the form f(x)=0.",
+            "authors": [
+                "Buison, Daisy Mae Y.",
+                "Curimatmat, Lorence Jude",
+                "Delima, Ralph Laurence",
+                "Gica, Hanna Mae T.",
+                "Pasaje, Rex Harvey"
+            ]
+        },
+        {
+            "file": "secant_method.py",
+            "name": "Secant Method",
+            "description": "The Secant Method is a numerical root-finding algorithm that iteratively approximates the root of a nonlinear equation by successively drawing secant lines between two recent estimates, refining the solution without requiring explicit derivative calculations.",
+            "authors": [
+                "Balabag, Renato Jr. N.",
+                "Emano, Jele Ira C.",
+                "Gaputan, Charles Joshua L.",
+                "Jarilla, Emmanuel Joshua W."
+            ]
+        },
+        {
+            "file": "modified_secant_method.py",
+            "name": "Modified Secant Method",
+            "description": "This graphical user interface (GUI) application is for solving nonlinear equations using the Modified Secant Method, a numerical root-finding technique. It utilizes the tkinter library for the GUI, allowing users to input a mathematical function, initial guess, perturbation, tolerance, and maximum iterations.",
+            "authors": [
+                "Lauron, Dinmarc Nick",
+                "Cabalo, Dan Lufranc",
+                "Engracia, Julius Caesar",
+                "Ampo, John Franz",
+                "Omundang, Kent Louie"
+            ]
+        }
+    ]
+}
