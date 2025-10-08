@@ -1,320 +1,176 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext
-import time
+from tkinter import ttk, messagebox
+from PIL import Image, ImageTk
+import math
 
-def secant_method(func_str, x0, x1, tol=1e-5, max_iter=100):
-    """Secant Method with enhanced output formatting"""
+# -----------------------------
+# Modified Secant Method Function
+# -----------------------------
+def modified_secant_method(func, x0, delta, tol, max_iter):
+    iteration_data = []
+    for i in range(max_iter):
+        f_x0 = func(x0)
+        f_x0_delta = func(x0 + delta * x0)
+        if f_x0_delta - f_x0 == 0:
+            messagebox.showerror("Math Error", "Division by zero encountered.")
+            return None, iteration_data
+
+        x1 = x0 - (f_x0 * delta * x0) / (f_x0_delta - f_x0)
+        iteration_data.append((i + 1, x0, f_x0, x1))
+        if abs(x1 - x0) < tol:
+            return x1, iteration_data
+        x0 = x1
+    return x1, iteration_data
+
+# -----------------------------
+# Function to Evaluate Input Expression
+# -----------------------------
+def evaluate_function(expr):
+    def f(x):
+        return eval(expr, {"x": x, "math": math})
+    return f
+
+# -----------------------------
+# Functionality: Solve Button
+# -----------------------------
+def solve_equation():
     try:
-        func = lambda x: eval(func_str, {"x": x, "__builtins__": {}})
+        expr = entry_function.get()
+        x0 = float(entry_x0.get())
+        delta = float(entry_delta.get())
+        tol = float(entry_tol.get())
+        max_iter = int(entry_iter.get())
 
-        results = []
-        start_time = time.time()
+        func = evaluate_function(expr)
+        root_val, iterations = modified_secant_method(func, x0, delta, tol, max_iter)
 
-        # Store iteration data for table
-        iteration_data = []
+        if root_val is not None:
+            result_text = f"Approximate Root: {root_val:.6f}\n\nIteration Data:\n"
+            result_text += "Iter\t\tx0\t\tf(x0)\t\tx1\n"
+            result_text += "-" * 55 + "\n"
+            for i, x_old, fx, x_new in iterations:
+                result_text += f"{i}\t{x_old:.6f}\t{fx:.6f}\t{x_new:.6f}\n"
 
-        for iteration in range(1, max_iter + 1):
-            f_x0 = func(x0)
-            f_x1 = func(x1)
-
-            if abs(f_x1 - f_x0) < 1e-14:
-                return None, "Division by zero", iteration_data, 0, 0
-
-            x_new = x1 - f_x1 * (x1 - x0) / (f_x1 - f_x0)
-            f_new = func(x_new)
-            error = abs(x_new - x1)
-
-            # Store data for table
-            iteration_data.append({
-                'iter': iteration,
-                'x_n': x_new,
-                'f_x': f_new,
-                'error': error
-            })
-
-            if error < tol:
-                elapsed = time.time() - start_time
-                return x_new, "success", iteration_data, iteration, elapsed
-
-            x0, x1 = x1, x_new
-
-        elapsed = time.time() - start_time
-        return x1, "Max iterations", iteration_data, max_iter, elapsed
+            text_result.config(state=tk.NORMAL)
+            text_result.delete(1.0, tk.END)
+            text_result.insert(tk.END, result_text)
+            text_result.config(state=tk.DISABLED)
+        else:
+            text_result.config(state=tk.NORMAL)
+            text_result.delete(1.0, tk.END)
+            text_result.insert(tk.END, "Computation failed.")
+            text_result.config(state=tk.DISABLED)
 
     except Exception as e:
-        return None, f"Error: {str(e)}", [], 0, 0
+        messagebox.showerror("Input Error", f"Invalid input or expression.\n\nDetails: {e}")
 
-class SecantMethodGUI:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Secant Method Calculator - ECE 311")
-        self.root.geometry("900x750")
-        self.root.configure(bg='#f0f0f0')
+# -----------------------------
+# GUI Setup
+# -----------------------------
+root = tk.Tk()
+root.title("USTP Numerical Methods - Modified Secant Method")
+root.geometry("850x650")
+root.resizable(False, False)
+root.configure(bg="#1A1446")  # Deep USTP blue
 
-        self.setup_ui()
+# Center window on screen
+window_width = 850
+window_height = 650
+screen_width = root.winfo_screenwidth()
+screen_height = root.winfo_screenheight()
+x_cordinate = int((screen_width/2) - (window_width/2))
+y_cordinate = int((screen_height/2) - (window_height/2))
+root.geometry(f"{window_width}x{window_height}+{x_cordinate}+{y_cordinate}")
 
-    def setup_ui(self):
-        # Header
-        header = tk.Frame(self.root, bg='#34495e', height=80)
-        header.pack(fill=tk.X)
-        header.pack_propagate(False)
+# -----------------------------
+# USTP Logo and Title
+# -----------------------------
+try:
+    logo = Image.open("ustp_logo.png")
+    logo = logo.resize((100, 100), Image.LANCZOS)
+    logo_img = ImageTk.PhotoImage(logo)
+    logo_label = tk.Label(root, image=logo_img, bg="#1A1446")
+    logo_label.image = logo_img
+    logo_label.pack(pady=(15, 5))
+except Exception as e:
+    print("Logo not found or failed to load:", e)
 
-        tk.Label(header, text="SECANT METHOD ROOT FINDER",
-                 font=('Arial', 20, 'bold'),
-                 bg='#34495e', fg='white').pack(pady=25)
+tk.Label(
+    root,
+    text="UNIVERSITY OF SCIENCE AND TECHNOLOGY OF SOUTHERN PHILIPPINES",
+    font=("Segoe UI", 12, "bold"),
+    fg="white",
+    bg="#1A1446"
+).pack()
 
-        # Footer (at the end of setup_ui method)
-        footer = tk.Label(self.root,
-                          text="ECE 311 - Numerical Methods | Secant Method Implementation",
-                          font=('Arial', 9),
-                          bg='#34495e', fg='white',
-                          pady=12)
-        footer.pack(side=tk.BOTTOM, fill=tk.X)
+tk.Label(
+    root,
+    text="Modified Secant Method Solver",
+    font=("Segoe UI", 18, "bold"),
+    fg="#F9B233",  # USTP Gold
+    bg="#1A1446",
+    pady=10
+).pack()
 
-        # Input Parameters Frame
-        input_frame = tk.LabelFrame(self.root, text="Input Parameters",
-                                    font=('Arial', 11, 'bold'),
-                                    bg='#f0f0f0',
-                                    padx=25, pady=20)
-        input_frame.pack(padx=15, pady=15, fill=tk.X)
+# -----------------------------
+# Input Frame
+# -----------------------------
+input_frame = tk.Frame(root, bg="white", padx=20, pady=20, bd=0, relief="flat")
+input_frame.pack(pady=10)
 
-        # Function f(x)
-        tk.Label(input_frame, text="Function f(x):",
-                 font=('Arial', 10, 'bold'),
-                 bg='#f0f0f0').grid(row=0, column=0, sticky='w', pady=8)
+def create_labeled_entry(frame, label_text, default_val, row):
+    tk.Label(frame, text=label_text, bg="white", font=("Segoe UI", 11)).grid(row=row, column=0, sticky="w", pady=5)
+    entry = tk.Entry(frame, width=30, font=("Consolas", 11))
+    entry.grid(row=row, column=1, padx=10, pady=5)
+    entry.insert(0, default_val)
+    return entry
 
-        func_container = tk.Frame(input_frame, bg='#f0f0f0')
-        func_container.grid(row=0, column=1, columnspan=2, sticky='w', pady=8)
+# Function entry fields
+tk.Label(input_frame, text="f(x) =", bg="white", font=("Segoe UI", 11, "bold")).grid(row=0, column=0, sticky="w", pady=5)
+entry_function = tk.Entry(input_frame, width=35, font=("Consolas", 11))
+entry_function.grid(row=0, column=1, padx=10, pady=5)
+entry_function.insert(0, "math.exp(-x) - x")
 
-        self.func_entry = tk.Entry(func_container, width=40,
-                                   font=('Courier', 10),
-                                   relief='solid', bd=1)
-        self.func_entry.pack(side=tk.LEFT)
+entry_x0 = create_labeled_entry(input_frame, "Initial guess (x₀):", "0.5", 1)
+entry_delta = create_labeled_entry(input_frame, "Perturbation (δ):", "0.01", 2)
+entry_tol = create_labeled_entry(input_frame, "Tolerance:", "1e-6", 3)
+entry_iter = create_labeled_entry(input_frame, "Max iterations:", "20", 4)
 
-        tk.Label(func_container,
-                 text="  (use 'x' as variable, e.g., x**2-3*x+1)",
-                 font=('Arial', 8), fg='gray',
-                 bg='#f0f0f0').pack(side=tk.LEFT, padx=5)
+# Solve Button
+solve_btn = tk.Button(
+    root,
+    text="Compute Root",
+    command=solve_equation,
+    bg="#F9B233",
+    fg="#1A1446",
+    font=("Segoe UI", 12, "bold"),
+    relief="flat",
+    padx=25,
+    pady=8
+)
+solve_btn.pack(pady=10)
 
-        # Initial x0
-        tk.Label(input_frame, text="Initial x₀:",
-                 font=('Arial', 10, 'bold'),
-                 bg='#f0f0f0').grid(row=1, column=0, sticky='w', pady=8)
-        self.x0_entry = tk.Entry(input_frame, width=20,
-                                 font=('Arial', 10),
-                                 relief='solid', bd=1)
-        self.x0_entry.grid(row=1, column=1, sticky='w', pady=8)
+# -----------------------------
+# Output Frame
+# -----------------------------
+output_frame = tk.Frame(root, bg="white", padx=10, pady=10)
+output_frame.pack(pady=10, fill="both", expand=True)
 
-        # Initial x1
-        tk.Label(input_frame, text="Initial x₁:",
-                 font=('Arial', 10, 'bold'),
-                 bg='#f0f0f0').grid(row=2, column=0, sticky='w', pady=8)
-        self.x1_entry = tk.Entry(input_frame, width=20,
-                                 font=('Arial', 10),
-                                 relief='solid', bd=1)
-        self.x1_entry.grid(row=2, column=1, sticky='w', pady=8)
+tk.Label(output_frame, text="Results:", bg="white", font=("Segoe UI", 12, "bold")).pack(anchor="w")
 
-        # Tolerance
-        tk.Label(input_frame, text="Tolerance:",
-                 font=('Arial', 10, 'bold'),
-                 bg='#f0f0f0').grid(row=3, column=0, sticky='w', pady=8)
-        self.tol_entry = tk.Entry(input_frame, width=20,
-                                  font=('Arial', 10),
-                                  relief='solid', bd=1)
-        self.tol_entry.insert(0, "0.00001")
-        self.tol_entry.grid(row=3, column=1, sticky='w', pady=8)
+text_result = tk.Text(output_frame, height=12, width=90, font=("Consolas", 10), wrap="none", bg="#F8F8F8")
+text_result.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+scrollbar = ttk.Scrollbar(output_frame, orient="vertical", command=text_result.yview)
+scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+text_result.config(yscrollcommand=scrollbar.set, state=tk.DISABLED)
 
-        # Max Iterations
-        tk.Label(input_frame, text="Max Iterations:",
-                 font=('Arial', 10, 'bold'),
-                 bg='#f0f0f0').grid(row=4, column=0, sticky='w', pady=8)
-        self.max_iter_entry = tk.Entry(input_frame, width=20,
-                                       font=('Arial', 10),
-                                       relief='solid', bd=1)
-        self.max_iter_entry.insert(0, "100")
-        self.max_iter_entry.grid(row=4, column=1, sticky='w', pady=8)
+# Footer
+tk.Label(
+    root,
+    text="Developed for Numerical Methods PIT | USTP - 2025",
+    bg="#1A1446",
+    fg="white",
+    font=("Segoe UI", 9)
+).pack(side="bottom", pady=5)
 
-        # Buttons Frame
-        btn_frame = tk.Frame(self.root, bg='#f0f0f0')
-        btn_frame.pack(pady=10)
-
-        self.calc_btn = tk.Button(btn_frame, text="Calculate",
-                                  bg='#27ae60', fg='white',
-                                  font=('Arial', 11, 'bold'),
-                                  width=15, height=2,
-                                  relief='raised', bd=2,
-                                  cursor='hand2',
-                                  command=self.calculate)
-        self.calc_btn.pack(side=tk.LEFT, padx=5)
-
-        self.clear_btn = tk.Button(btn_frame, text="Clear",
-                                   bg='#e74c3c', fg='white',
-                                   font=('Arial', 11, 'bold'),
-                                   width=15, height=2,
-                                   relief='raised', bd=2,
-                                   cursor='hand2',
-                                   command=self.clear_all)
-        self.clear_btn.pack(side=tk.LEFT, padx=5)
-
-        self.example_btn = tk.Button(btn_frame, text="Load Example",
-                                     bg='#3498db', fg='white',
-                                     font=('Arial', 11, 'bold'),
-                                     width=15, height=2,
-                                     relief='raised', bd=2,
-                                     cursor='hand2',
-                                     command=self.load_example)
-        self.example_btn.pack(side=tk.LEFT, padx=5)
-
-        # Results Frame with ENHANCED TABLE
-        results_frame = tk.LabelFrame(self.root, text="Iteration Results",
-                                      font=('Arial', 11, 'bold'),
-                                      bg='#f0f0f0',
-                                      padx=15, pady=15)
-        results_frame.pack(padx=15, pady=10, fill=tk.BOTH, expand=True)
-
-        # Create custom text widget with tags for formatting
-        self.results_text = tk.Text(results_frame,
-                                    font=('Courier New', 9),
-                                    bg='white',
-                                    fg='#2c3e50',
-                                    relief='solid',
-                                    bd=1,
-                                    wrap=tk.NONE,
-                                    padx=10,
-                                    pady=10)
-
-        # Add scrollbars
-        y_scrollbar = tk.Scrollbar(results_frame, command=self.results_text.yview)
-        y_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        x_scrollbar = tk.Scrollbar(results_frame, orient=tk.HORIZONTAL,
-                                   command=self.results_text.xview)
-        x_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
-
-        self.results_text.config(yscrollcommand=y_scrollbar.set,
-                                 xscrollcommand=x_scrollbar.set)
-        self.results_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-
-        # Configure text tags for colored/styled output
-        self.results_text.tag_config('header', font=('Courier New', 10, 'bold'),
-                                     foreground='#2c3e50')
-        self.results_text.tag_config('subheader', font=('Courier New', 9, 'bold'),
-                                     foreground='#34495e')
-        self.results_text.tag_config('table_header', font=('Courier New', 9, 'bold'),
-                                     foreground='white', background='#34495e')
-        self.results_text.tag_config('data_row', font=('Courier New', 9),
-                                     foreground='#2c3e50')
-        self.results_text.tag_config('converged', font=('Courier New', 9),
-                                     foreground='#27ae60', background='#d5f4e6')
-        self.results_text.tag_config('summary', font=('Courier New', 10, 'bold'),
-                                     foreground='#27ae60')
-        self.results_text.tag_config('error_small', font=('Courier New', 9),
-                                     foreground='#f39c12')
-
-        # Footer
-        footer = tk.Label(self.root,
-                          text="ECE 311 - Numerical Methods | Secant Method Implementation",
-                          font=('Arial', 9),
-                          bg='#34495e', fg='white',
-                          pady=12)
-        footer.pack(side=tk.BOTTOM, fill=tk.X)
-
-    def format_iteration_table(self, iteration_data, x0_initial, x1_initial):
-        """Format iteration data into an enhanced table"""
-        self.results_text.delete(1.0, tk.END)
-
-        # Initial values section
-        self.results_text.insert(tk.END, "Initial Values: ", 'subheader')
-        self.results_text.insert(tk.END, f"x₀ = {x0_initial}, x₁ = {x1_initial}\n\n", 'data_row')
-
-        # Table header with proper alignment
-        header_line = f"{'Iter':<8} {'x_n':>20} {'f(x_n)':>22} {'Error':>22}\n"
-        self.results_text.insert(tk.END, header_line, 'table_header')
-
-        # Separator line
-        separator = "─" * 75 + "\n"
-        self.results_text.insert(tk.END, separator, 'subheader')
-
-        # Data rows with proper formatting
-        for data in iteration_data:
-            iter_num = data['iter']
-            x_n = data['x_n']
-            f_x = data['f_x']
-            error = data['error']
-
-            # Format each value with proper width and precision
-            row = f"{iter_num:<8} {x_n:>20.10f} {f_x:>22.12e} {error:>22.12e}\n"
-
-            # Color code based on error magnitude
-            if error < 1e-8:
-                self.results_text.insert(tk.END, row, 'converged')
-            elif error < 1e-4:
-                self.results_text.insert(tk.END, row, 'error_small')
-            else:
-                self.results_text.insert(tk.END, row, 'data_row')
-
-    def calculate(self):
-        """Execute secant method with enhanced display"""
-        try:
-            func = self.func_entry.get()
-            x0 = float(self.x0_entry.get())
-            x1 = float(self.x1_entry.get())
-            tol = float(self.tol_entry.get())
-            max_iter = int(self.max_iter_entry.get())
-
-            if not func:
-                messagebox.showerror("Input Error", "Please enter a function!")
-                return
-
-            # Run calculation
-            root, status, iteration_data, iterations, elapsed = secant_method(
-                func, x0, x1, tol, max_iter
-            )
-
-            # Display formatted table
-            self.format_iteration_table(iteration_data, x0, x1)
-
-            # Add convergence message
-            if status == "success":
-                self.results_text.insert(tk.END, "\n", 'data_row')
-                self.results_text.insert(tk.END, "Converged!\n", 'summary')
-                self.results_text.insert(tk.END, f"Root found at x = {root:.10f}\n", 'summary')
-                self.results_text.insert(tk.END, f"f(x) = {iteration_data[-1]['f_x']:.12e}\n", 'data_row')
-                self.results_text.insert(tk.END, f"Iterations: {iterations}\n", 'data_row')
-
-                messagebox.showinfo("Success", f"Root found: {root:.6f}")
-            else:
-                self.results_text.insert(tk.END, f"\n{status}\n", 'data_row')
-                messagebox.showwarning("Warning", status)
-
-        except ValueError:
-            messagebox.showerror("Input Error", "Please enter valid numbers!")
-        except Exception as e:
-            messagebox.showerror("Error", f"Calculation error: {str(e)}")
-
-    def load_example(self):
-        """Load example problem"""
-        self.func_entry.delete(0, tk.END)
-        self.func_entry.insert(0, "x**2 - x - 1")
-        self.x0_entry.delete(0, tk.END)
-        self.x0_entry.insert(0, "1")
-        self.x1_entry.delete(0, tk.END)
-        self.x1_entry.insert(0, "2")
-        messagebox.showinfo("Example Loaded",
-                            "Example: f(x) = x² - x - 1\nExpected root ≈ 1.618 (golden ratio)")
-
-    def clear_all(self):
-        """Clear all inputs and outputs"""
-        self.func_entry.delete(0, tk.END)
-        self.x0_entry.delete(0, tk.END)
-        self.x1_entry.delete(0, tk.END)
-        self.tol_entry.delete(0, tk.END)
-        self.tol_entry.insert(0, "0.00001")
-        self.max_iter_entry.delete(0, tk.END)
-        self.max_iter_entry.insert(0, "100")
-        self.results_text.delete(1.0, tk.END)
-
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = SecantMethodGUI(root)
-    root.mainloop()
+root.mainloop()
