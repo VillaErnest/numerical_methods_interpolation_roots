@@ -3,8 +3,9 @@ from tkinter import messagebox, scrolledtext
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-import re
 import traceback
+from sympy import symbols, sympify, lambdify
+import numpy as np
 
 # Constants for the application
 FONT = ('Inter', 10)
@@ -118,28 +119,18 @@ class BrentMethodApp:
         self.log_text.see(tk.END)
 
     def parse_function(self, func_str):
-        """Parse user input string into a callable function f(x) using NumPy."""
+        """Parse user input string into a callable f(x) using Sympy + NumPy."""
+        x = symbols('x')
         func_str = func_str.replace('^', '**')
 
-        # Insert multiplication where omitted (e.g., 2x, x(5), )x)
-        func_str = re.sub(r'(\d)(x)', r'\1*\2', func_str)
-        func_str = re.sub(r'(x)(\d)', r'\1*\2', func_str)
-        func_str = re.sub(r'(x)(\()', r'\1*\2', func_str)
-        func_str = re.sub(r'(\))(x)', r'\1*\2', func_str)
-
-        # Allowed functions/constants from numpy
-        allowed = {
-            'sin': np.sin, 'cos': np.cos, 'tan': np.tan, 'asin': np.arcsin, 'acos': np.arccos, 'atan': np.arctan,
-            'exp': np.exp, 'log': np.log, 'ln': np.log, 'log10': np.log10, 'sqrt': np.sqrt,
-            'pi': np.pi, 'e': np.e, 'abs': np.abs
-        }
-
         try:
-            # Safely evaluate the lambda function
-            return eval(f"lambda x: {func_str}", {"__builtins__": None}, allowed)
+            expr = sympify(func_str)
+            f = lambdify(x, expr, modules=['numpy'])
+            f(0)  # test evaluation
+            return f
         except Exception as e:
-            raise ValueError(f"Invalid function string or syntax: {e}")
-
+            raise ValueError(f"Invalid function syntax: {e}")
+    
     def brent_method(self, f, a, b, tol, max_iter):
         """Brent's method implementation for root finding."""
         try:
