@@ -6,11 +6,9 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.animation import FuncAnimation
 import sys
-from io import BytesIO
 from PIL import Image, ImageTk
 import math
 
-# ----------------- Config / UI Colors (unchanged) -----------------
 COLOR_BG_MAIN = "#f8fafc"
 COLOR_BG_CARD = "#ffffff"
 COLOR_ACCENT = "#f97316"
@@ -21,11 +19,9 @@ COLOR_BORDER = "#e5e7eb"
 COLOR_SUCCESS = "#10b981"
 COLOR_INFO = "#3b82f6"
 
-# Safe functions for eval
 SAFE_FUNCTIONS = {name: getattr(np, name) for name in dir(np) if not name.startswith("_")}
 SAFE_FUNCTIONS.update({"pi": np.pi, "e": np.e})
 
-# Formatting constants (unchanged)
 X_PRECISION = 10
 ERR_PRECISION = 3
 COL_WIDTH_ITER = 6
@@ -33,18 +29,9 @@ COL_WIDTH_X = X_PRECISION + 10
 COL_WIDTH_ERR = 14
 TOTAL_WIDTH = COL_WIDTH_ITER + COL_WIDTH_X * 2 + COL_WIDTH_ERR
 
-# Cobweb animation delay (seconds)
-COBWEB_STEP_DELAY = 0.5  # seconds per iteration step
+COBWEB_STEP_DELAY = 0.5
 
-# ----------------- Computation Core -----------------
 class FixedPointSolverCore:
-    """
-    Pure computational core for:
-     - generating g(x) candidates from f(x)=0 (using sympy)
-     - picking best g(x) using numerical derivative at x0
-     - running fixed-point iterations numerically
-    """
-
     def __init__(self):
         self.g_candidates = []
 
@@ -93,6 +80,7 @@ class FixedPointSolverCore:
                 if degree == 2 and len(coeffs) == 3:
                     a, b, c = coeffs
                     if a != 0:
+                        # isolate sqrt style: note: might create +- roots; keep principal
                         g_quad = sp.sqrt((-b * x - c) / a)
                         self.g_candidates.append(str(sp.simplify(g_quad)))
                         # alternate rational rearrangement
@@ -127,6 +115,7 @@ class FixedPointSolverCore:
                 for fn in [sp.cos, sp.sin, sp.tan]:
                     trig_terms = [arg for arg in f.atoms(fn)]
                     if trig_terms:
+                        # Use the first trig atom as a guess for g(x) (string form)
                         self.g_candidates.append(str(trig_terms[0]))
         except Exception:
             pass
@@ -142,28 +131,46 @@ class FixedPointSolverCore:
         return self.g_candidates
 
     def _make_safe_callable(self, expr_str):
-        """Return a python-callable lambda x: ... from expr_str using SAFE_FUNCTIONS."""
-        # Replace sympy style to numpy where reasonable (basic)
-        replacements = {
-            'sqrt(': 'np.sqrt(',
-            'exp(': 'np.exp(',
-            'log(': 'np.log(',
-            'sin(': 'np.sin(',
-            'cos(': 'np.cos(',
-            'tan(': 'np.tan(',
-        }
-        safe_expr = expr_str
-        for k, v in replacements.items():
-            safe_expr = safe_expr.replace(k, v)
-        # Build callable
+        """Return a python-callable lambda x: ... from expr_str using sympy.lambdify (preferred) or a safe eval fallback."""
+        x = sp.symbols('x')
+        
+        # Try sympify + lambdify (this handles trig, exp, combos, powers, etc.)
         try:
-            func = eval(f"lambda x: {safe_expr}", {"__builtins__": None, "np": np}, SAFE_FUNCTIONS)
+            expr = sp.sympify(expr_str)
+            func = sp.lambdify(x, expr, modules=["numpy"])  # uses numpy functions where possible
             # Test small value
-            _ = func(0.1)
-            return func
-        except Exception as e:
-            # raise or return None to indicate failure
-            return None
+            test_val = func(0.1)
+            # If numpy returns array, convert to scalar wrapper
+            def wrapper(v):
+                try:
+                    res = func(v)
+                    if isinstance(res, np.ndarray):
+                        return float(res)
+                    return res
+                except Exception:
+                    # re-raise to be handled upstream
+                    raise
+            return wrapper
+        except Exception:
+            # Fallback: perform string replacements and safe eval using SAFE_FUNCTIONS
+            replacements = {
+                'sqrt(': 'np.sqrt(',
+                'exp(': 'np.exp(',
+                'log(': 'np.log(',
+                'sin(': 'np.sin(',
+                'cos(': 'np.cos(',
+                'tan(': 'np.tan(',
+            }
+            safe_expr = expr_str
+            for k, v in replacements.items():
+                safe_expr = safe_expr.replace(k, v)
+            try:
+                func = eval(f"lambda x: {safe_expr}", {"__builtins__": None, "np": np}, SAFE_FUNCTIONS)
+                # Test small value
+                _ = func(0.1)
+                return func
+            except Exception:
+                return None
 
     def _numerical_derivative(self, func, x, h=1e-6):
         try:
@@ -194,8 +201,9 @@ class FixedPointSolverCore:
         Execute iteration numerically and return:
           (iterations_list, last_approx, converged)
         iterations_list: list of tuples (i, x_old, x_new, rel_error)
+        This version records NaN/Inf iterations instead of raising, so the GUI can
+        still display the full iteration history.
         """
-        # parse inputs
         try:
             x0_v = float(x0)
             tol_v = float(tol)
@@ -213,21 +221,38 @@ class FixedPointSolverCore:
         for i in range(1, max_it + 1):
             try:
                 p_new = func(p)
-                if np.isnan(p_new) or np.isinf(p_new):
-                    raise ValueError("NaN or Inf encountered")
-            except Exception as e:
-                raise ValueError(f"Math error during iteration {i}: {e}")
+                # If numpy array returned, take scalar
+                if isinstance(p_new, np.ndarray):
+                    try:
+                        p_new = float(p_new)
+                    except Exception:
+                        p_new = float('nan')
+            except Exception:
+                # Instead of raising, record a NaN step and stop further numeric evaluation
+                iterations.append((i, p, float('nan'), float('inf')))
+                return iterations, float('nan'), False
 
-            err = abs(p_new - p) / abs(p_new) if p_new != 0 else abs(p_new - p)
+            # If result is not finite, record and stop
+            if p_new is None or np.isnan(p_new) or np.isinf(p_new):
+                err = float('inf')
+                iterations.append((i, p, float(p_new) if (isinstance(p_new, (int, float)) and not np.isnan(p_new)) else float('nan'), err))
+                return iterations, p_new, False
+
+            # compute relative error safely
+            try:
+                err = abs(p_new - p) / abs(p_new) if p_new != 0 else abs(p_new - p)
+            except Exception:
+                err = float('inf')
+
             iterations.append((i, p, p_new, err))
             if not ignore_tol and err < tol_v:
                 converged = True
-                return iterations, p_new, True
+                break
+
             p = p_new
 
-        return iterations, p, False
+        return iterations, p, converged
 
-# ----------------- GUI (keeps structure & layout unchanged) -----------------
 class FixedPointSolverGUI:
     def __init__(self):
         self.core = FixedPointSolverCore()
@@ -238,7 +263,6 @@ class FixedPointSolverGUI:
         self.root.configure(bg=COLOR_BG_MAIN)
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
-        # retained variables/widgets (unchanged names where possible)
         self.g_candidates = []
         self.fig_canvas = None
         self.anim = None
@@ -251,7 +275,6 @@ class FixedPointSolverGUI:
         self._create_input_area()
         self._create_visualization_and_output_area()
 
-        # generate initial candidates (silently)
         try:
             self.generate_g_candidates(initial_load=True)
         except Exception:
@@ -282,7 +305,6 @@ class FixedPointSolverGUI:
         self.left_col = tk.Frame(self.input_inner, bg=COLOR_BG_CARD)
         self.left_col.pack(side="left", padx=10, pady=5, fill="x", expand=True)
 
-        # input variables
         self.eq_var = tk.StringVar(value="x**2 - 2")
         self.tol_var = tk.StringVar(value="1e-4")
         self.x0_var = tk.StringVar(value="1.5")
@@ -341,18 +363,15 @@ class FixedPointSolverGUI:
         self.content_panel = tk.Frame(self.main_content, bg=COLOR_BG_MAIN)
         self.content_panel.pack(fill="both", expand=True)
 
-        # Left: plotting area
         self.plot_frame = tk.Frame(self.content_panel, bg=COLOR_BG_CARD, bd=1, highlightbackground=COLOR_BORDER, highlightthickness=1)
         self.plot_frame.pack(side="left", fill="both", expand=True, padx=(0, 8))
 
         tk.Label(self.plot_frame, text="Function Plot (f(x) and g(x) vs. y=x)", font=("Segoe UI", 12, "bold"),
                  bg=COLOR_BG_CARD, fg=COLOR_ACCENT).pack(pady=5)
 
-        # Right: output / results area
         self.output_frame = tk.Frame(self.content_panel, bg=COLOR_BG_CARD, bd=1, highlightbackground=COLOR_BORDER, highlightthickness=1)
         self.output_frame.pack(side="right", fill="both", expand=True, padx=(8, 0))
 
-        # Keep the label but show plain text (no LaTeX)
         self.latex_display = tk.Label(self.output_frame, bg=COLOR_BG_CARD, text="", justify="left", anchor="w", font=("Segoe UI", 10))
         self.latex_display.pack(pady=(5, 0), fill="x", padx=8)
 
@@ -375,11 +394,9 @@ class FixedPointSolverGUI:
 
         self.result_text.config(state=tk.DISABLED)
 
-        # Canvas container inside plot_frame
         self.canvas_container = tk.Frame(self.plot_frame, bg=COLOR_BG_CARD)
         self.canvas_container.pack(fill="both", expand=True)
 
-    # ----------------- Plot helpers -----------------
     def _clear_plot_canvas(self):
         if self.fig_canvas:
             try:
@@ -388,8 +405,13 @@ class FixedPointSolverGUI:
                 pass
             self.fig_canvas = None
 
+    def _safe_callable_for_plot(self, expr_str):
+        try:
+            return self.core._make_safe_callable(expr_str)
+        except Exception:
+            return None
+
     def _plot_all_g_candidates(self, f_sympy):
-        """Plot all generated g(x) curves and y=x (and faint f(x) for reference)."""
         try:
             x0_val = float(self.x0_var.get())
         except Exception:
@@ -402,30 +424,31 @@ class FixedPointSolverGUI:
         self._clear_plot_canvas()
         fig, ax = plt.subplots(figsize=(6, 4))
 
-        # f(x) (faint reference)
         try:
-            f_str = str(sp.sympify(self.eq_var.get()))
-            f_str_safe = f_str.replace('**', '**').replace('sqrt', 'np.sqrt').replace('exp', 'np.exp').replace('log', 'np.log').replace('sin', 'np.sin').replace('cos', 'np.cos').replace('tan', 'np.tan')
-            f_func = eval(f"lambda x: {f_str_safe}", {"__builtins__": None, "np": np}, SAFE_FUNCTIONS)
-            f_y = np.array([f_func(xx) if not (np.isnan(xx) or np.isinf(xx)) else np.nan for xx in x_vals])
-            f_y[np.abs(f_y) > 50] = np.nan
-            ax.plot(x_vals, f_y, color='lightgray', linestyle='-', linewidth=1, label="f(x) (reference)")
+            f_callable = self._safe_callable_for_plot(str(sp.sympify(self.eq_var.get())))
+            if f_callable is not None:
+                f_y = np.array([f_callable(xx) if not (np.isnan(xx) or np.isinf(xx)) else np.nan for xx in x_vals])
+                f_y = np.array([float(v) if np.isfinite(v) else np.nan for v in f_y])
+                f_y[np.abs(f_y) > 50] = np.nan
+                ax.plot(x_vals, f_y, color='lightgray', linestyle='-', linewidth=1, label="f(x) (reference)")
+            else:
+                ax.axhline(0, color='lightgray', linestyle=':', label='f(x) (ref)')
         except Exception:
             ax.axhline(0, color='lightgray', linestyle=':', label='f(x) (ref)')
 
-        # Plot each g candidate
         colors = ['red', 'green', 'purple', 'orange', 'brown', 'pink', 'gray', 'olive']
         for i, g in enumerate(self.g_candidates[:8]):
             try:
-                g_safe = g.replace('sqrt', 'np.sqrt').replace('exp', 'np.exp').replace('log', 'np.log').replace('sin', 'np.sin').replace('cos', 'np.cos').replace('tan', 'np.tan')
-                g_func = eval(f"lambda x: {g_safe}", {"__builtins__": None, "np": np}, SAFE_FUNCTIONS)
+                g_func = self._safe_callable_for_plot(g)
+                if g_func is None:
+                    continue
                 y_vals = np.array([g_func(xx) if not (np.isnan(xx) or np.isinf(xx)) else np.nan for xx in x_vals])
+                y_vals = np.array([float(v) if np.isfinite(v) else np.nan for v in y_vals])
                 y_vals[np.abs(y_vals) > 50] = np.nan
                 ax.plot(x_vals, y_vals, '--', alpha=0.8, color=colors[i % len(colors)], label=f"g{i+1}(x)")
             except Exception:
                 continue
 
-        # y = x
         ax.plot(x_vals, x_vals, 'k:', linewidth=1.5, label='y = x')
 
         ax.set_xlabel("x")
@@ -439,16 +462,11 @@ class FixedPointSolverGUI:
         self.fig_canvas.get_tk_widget().pack(side=tk.TOP, fill="both", expand=True)
 
     def _plot_selected_and_animate(self, f_sympy, g_str, iterations):
-        """
-        Plot f(x), selected g(x), y=x and animate cobweb from initial x through the iterations.
-        iterations: list of tuples (i, x_old, x_new, err)
-        """
         try:
             x0_val = float(self.x0_var.get())
         except Exception:
             x0_val = 0.5
 
-        # range: center around x0 and iteration points
         xs = [x0_val] + [it[1] for it in iterations] + [it[2] for it in iterations]
         finite_xs = [x for x in xs if (not math.isnan(x) and not math.isinf(x))]
         if finite_xs:
@@ -463,35 +481,34 @@ class FixedPointSolverGUI:
         self._clear_plot_canvas()
         fig, ax = plt.subplots(figsize=(6, 4))
 
-        # f(x)
         try:
-            f_str = str(sp.sympify(self.eq_var.get()))
-            f_str_safe = f_str.replace('sqrt', 'np.sqrt').replace('exp', 'np.exp').replace('log', 'np.log').replace('sin', 'np.sin').replace('cos', 'np.cos').replace('tan', 'np.tan')
-            f_func = eval(f"lambda x: {f_str_safe}", {"__builtins__": None, "np": np}, SAFE_FUNCTIONS)
-            f_y = np.array([f_func(xx) if not (np.isnan(xx) or np.isinf(xx)) else np.nan for xx in x_vals])
-            f_y[np.abs(f_y) > 50] = np.nan
-            ax.plot(x_vals, f_y, color='lightgray', linestyle='-', linewidth=1, label="f(x) (reference)")
+            f_callable = self._safe_callable_for_plot(str(sp.sympify(self.eq_var.get())))
+            if f_callable is not None:
+                f_y = np.array([f_callable(xx) if not (np.isnan(xx) or np.isinf(xx)) else np.nan for xx in x_vals])
+                f_y = np.array([float(v) if np.isfinite(v) else np.nan for v in f_y])
+                f_y[np.abs(f_y) > 50] = np.nan
+                ax.plot(x_vals, f_y, color='lightgray', linestyle='-', linewidth=1, label="f(x) (reference)")
+            else:
+                ax.axhline(0, color='lightgray', linestyle=':', label='f(x) (ref)')
         except Exception:
             ax.axhline(0, color='lightgray', linestyle=':', label='f(x) (ref)')
 
-        # selected g(x)
-        try:
-            g_safe = g_str.replace('sqrt', 'np.sqrt').replace('exp', 'np.exp').replace('log', 'np.log').replace('sin', 'np.sin').replace('cos', 'np.cos').replace('tan', 'np.tan')
-            g_func = eval(f"lambda x: {g_safe}", {"__builtins__": None, "np": np}, SAFE_FUNCTIONS)
-            g_y = np.array([g_func(xx) if not (np.isnan(xx) or np.isinf(xx)) else np.nan for xx in x_vals])
-            g_y[np.abs(g_y) > 50] = np.nan
-            g_line, = ax.plot(x_vals, g_y, '--', linewidth=1.8, label="selected g(x)")
-        except Exception:
-            g_line = None
+        g_callable = self._safe_callable_for_plot(g_str)
+        g_line = None
+        if g_callable is not None:
+            try:
+                g_y = np.array([g_callable(xx) if not (np.isnan(xx) or np.isinf(xx)) else np.nan for xx in x_vals])
+                g_y = np.array([float(v) if np.isfinite(v) else np.nan for v in g_y])
+                g_y[np.abs(g_y) > 50] = np.nan
+                g_line, = ax.plot(x_vals, g_y, '--', linewidth=1.8, label="selected g(x)")
+            except Exception:
+                g_line = None
 
-        # y = x
         identity_line, = ax.plot(x_vals, x_vals, 'k:', linewidth=1.5, label='y = x')
 
-        # prepare cobweb line object (step segments)
         cobweb_line, = ax.plot([], [], '-', linewidth=1.5, color='blue')
 
         ax.set_xlim([max(-10, xmin), min(10, xmax)])
-        # set y limits similar to x-range for clarity
         y_min = min(ax.get_xlim())
         y_max = max(ax.get_xlim())
         ax.set_ylim([y_min, y_max])
@@ -502,72 +519,52 @@ class FixedPointSolverGUI:
         ax.grid(True, linestyle=':', alpha=0.5)
         ax.legend(fontsize=8, loc='best')
 
-        # Build the cobweb points as a sequence of coordinates to draw step-by-step
-        # For each iteration (x_n -> g(x_n) -> x_{n+1}) we make two segments:
-        #   vertical: (x_n, x_n) -> (x_n, g(x_n))
-        #   horizontal: (x_n, g(x_n)) -> (g(x_n), g(x_n))
         cobweb_coords_x = []
         cobweb_coords_y = []
-        # start at x0
         if iterations:
-            # include initial point on y=x
             first_x = iterations[0][1]
-            cobweb_coords_x.append(first_x)
-            cobweb_coords_y.append(first_x)
+            if not (math.isnan(first_x) or math.isinf(first_x)):
+                cobweb_coords_x.append(first_x)
+                cobweb_coords_y.append(first_x)
             for (_, x_old, x_new, _) in iterations:
-                # vertical to g(x_old)
-                cobweb_coords_x.append(x_old)
-                cobweb_coords_y.append(x_new)
-                # horizontal to (x_new, x_new)
-                cobweb_coords_x.append(x_new)
-                cobweb_coords_y.append(x_new)
+                if not (math.isnan(x_old) or math.isinf(x_old)):
+                    cobweb_coords_x.append(x_old)
+                    cobweb_coords_y.append(x_new if (not math.isnan(x_new) and not math.isinf(x_new)) else x_old)
+                if not (math.isnan(x_new) or math.isinf(x_new)):
+                    cobweb_coords_x.append(x_new)
+                    cobweb_coords_y.append(x_new)
 
-        # Convert COBWEB_STEP_DELAY to interval (ms) per frame.
-        # We'll show one coordinate per frame (so 2 coords per iteration -> fit)
         interval_ms = int(COBWEB_STEP_DELAY * 1000)
 
-        # Animation update function
         def init():
             cobweb_line.set_data([], [])
             return cobweb_line,
 
         def update(frame):
-            # frame is index into cobweb_coords
             xs = cobweb_coords_x[:frame + 1]
             ys = cobweb_coords_y[:frame + 1]
             cobweb_line.set_data(xs, ys)
             return cobweb_line,
 
-        # If no steps, simply show static plot
         if not cobweb_coords_x:
             self.fig_canvas = FigureCanvasTkAgg(fig, master=self.canvas_container)
             self.fig_canvas.draw()
             self.fig_canvas.get_tk_widget().pack(side=tk.TOP, fill="both", expand=True)
             return
 
-        # Create animation: frames = number of cobweb points
         frames = len(cobweb_coords_x)
-        # Use blit for better performance where possible
         try:
             anim = FuncAnimation(fig, update, frames=frames, init_func=init, interval=interval_ms, blit=True, repeat=False)
         except Exception:
             anim = FuncAnimation(fig, update, frames=frames, init_func=init, interval=interval_ms, repeat=False)
 
-        # Store anim to prevent garbage collection
         self.anim = anim
 
-        # Embed in Tk
         self.fig_canvas = FigureCanvasTkAgg(fig, master=self.canvas_container)
         self.fig_canvas.draw()
         self.fig_canvas.get_tk_widget().pack(side=tk.TOP, fill="both", expand=True)
 
-        # Note: FuncAnimation will run in the background and will update the canvas.
-        # To ensure updates appear in Tkinter, we'll use the fig_canvas.draw() after each interval.
-        # Matplotlib's animation typically runs its own timer—embedding with TkAgg will make it visible.
-
-    # ----------------- Core GUI actions -----------------
     def generate_g_candidates(self, equation_str=None, var_str="x", initial_load=False):
-        """Generate candidates using the core and plot them (unchanged GUI)."""
         if equation_str is None:
             equation_str = self.eq_var.get()
 
@@ -580,25 +577,21 @@ class FixedPointSolverGUI:
             self.g_candidates = []
             return
 
-        # Update listbox (show plain text)
         self.candidate_list.delete(0, tk.END)
         for i, g in enumerate(self.g_candidates):
             display_text = f"g{i+1}: {g}"
             self.candidate_list.insert(tk.END, display_text)
 
-        # Plot all g candidates (and y=x + faint f(x))
         try:
             f_sym = sp.sympify(self.eq_var.get())
         except Exception:
             f_sym = None
         self._plot_all_g_candidates(f_sym)
 
-        # Update text label showing f and count of g's (replacing LaTeX display)
         show_text = f"f(x) = {self.eq_var.get()}\nGenerated {len(self.g_candidates)} g(x) candidate(s)."
         self.latex_display.config(text=show_text)
 
     def solve_fixed_point(self, g_str, x0, tol, max_iter, ignore_tol):
-        """Use core to execute iterations and update result_text (GUI display)."""
         self.result_text.config(state=tk.NORMAL)
         self.result_text.delete(1.0, tk.END)
 
@@ -609,11 +602,9 @@ class FixedPointSolverGUI:
             self.result_text.config(state=tk.DISABLED)
             return
 
-        # Display header and info (plain text)
         self.result_text.insert(tk.END, f"FIXED-POINT ITERATION RESULTS\n", "header")
-        self.result_text.insert(tk.END, f"{'=' * TOTAL_WIDTH}\n\n", "header")
+        self.result_text.insert(tk.END, f"{('=' * TOTAL_WIDTH)}\n\n", "header")
 
-        # Show original equation (plain)
         try:
             f_expr = sp.sympify(self.eq_var.get())
             self.result_text.insert(tk.END, f"Original Equation: f(x) = 0\n", "data")
@@ -621,7 +612,6 @@ class FixedPointSolverGUI:
         except Exception:
             pass
 
-        # Show the g used
         self.result_text.insert(tk.END, f"Using g(x) for iteration:\n", "data")
         self.result_text.insert(tk.END, f"  Python: g(x) = {g_str}\n\n", "data")
 
@@ -629,32 +619,54 @@ class FixedPointSolverGUI:
         self.result_text.insert(tk.END, f"Stopping tolerance: ε = {tol}\n", "data")
         self.result_text.insert(tk.END, f"Max iterations: N = {max_iter}\n\n", "data")
 
-        header_line = f"{'Iter':<{COL_WIDTH_ITER}}{'x_i':<{COL_WIDTH_X}}{'x_{i+1}':<{COL_WIDTH_X}}{'Rel Error':<{COL_WIDTH_ERR}}\n"
+        header_line = f"{ 'Iter':<{COL_WIDTH_ITER}}{'x_i':<{COL_WIDTH_X}}{'x_{i+1}':<{COL_WIDTH_X}}{'Rel Error':<{COL_WIDTH_ERR}}\n"
         self.result_text.insert(tk.END, header_line, "table_header")
         self.result_text.insert(tk.END, "-" * TOTAL_WIDTH + "\n", "table_header")
 
         for i, x_old, x_new, err in iterations:
-            x_old_formatted = f"{x_old:<{COL_WIDTH_X}.{X_PRECISION}f}"
-            x_new_formatted = f"{x_new:<{COL_WIDTH_X}.{X_PRECISION}f}"
-            error_formatted = f"{err:<{COL_WIDTH_ERR}.{ERR_PRECISION}e}"
+            def fmt(v, width, prec):
+                try:
+                    if v is None or (isinstance(v, float) and (math.isnan(v) or math.isinf(v))):
+                        return f"{'nan':<{width}}"
+                    return f"{v:<{width}.{prec}f}"
+                except Exception:
+                    return f"{'nan':<{width}}"
+
+            x_old_formatted = fmt(x_old, COL_WIDTH_X, X_PRECISION)
+            x_new_formatted = fmt(x_new, COL_WIDTH_X, X_PRECISION)
+            try:
+                if isinstance(err, float) and (math.isnan(err) or math.isinf(err)):
+                    error_formatted = f"{'inf':<{COL_WIDTH_ERR}}"
+                else:
+                    error_formatted = f"{err:<{COL_WIDTH_ERR}.{ERR_PRECISION}e}"
+            except Exception:
+                error_formatted = f"{'inf':<{COL_WIDTH_ERR}}"
+
             data_line = f"{i:<{COL_WIDTH_ITER}}{x_old_formatted}{x_new_formatted}{error_formatted}\n"
             self.result_text.insert(tk.END, data_line, "data")
 
         if converged:
             self.result_text.insert(tk.END, "\n" + "=" * TOTAL_WIDTH + "\n", "success")
-            self.result_text.insert(tk.END, f"SUCCESS! Fixed point found: x* ≈ {last_x:.{X_PRECISION}f}\n", "success")
+            try:
+                last_x_str = f"{last_x:.{X_PRECISION}f}"
+            except Exception:
+                last_x_str = str(last_x)
+            self.result_text.insert(tk.END, f"SUCCESS! Fixed point found: x* ≈ {last_x_str}\n", "success")
             self.result_text.insert(tk.END, "=" * TOTAL_WIDTH + "\n", "success")
         else:
             self.result_text.insert(tk.END, "\n" + "=" * TOTAL_WIDTH + "\n", "error")
+            try:
+                last_x_str = f"{last_x:.{X_PRECISION}f}"
+            except Exception:
+                last_x_str = str(last_x)
             self.result_text.insert(tk.END, f"FAILURE! Did not converge in {max_iter} iterations.\n", "error")
-            self.result_text.insert(tk.END, f"Last approximation: x ≈ {last_x:.{X_PRECISION}f}\n", "error")
+            self.result_text.insert(tk.END, f"Last approximation: x ≈ {last_x_str}\n", "error")
             self.result_text.insert(tk.END, "=" * TOTAL_WIDTH + "\n", "error")
 
         self.result_text.config(state=tk.DISABLED)
         return iterations, last_x, converged
 
     def run_iteration(self):
-        # Ensure candidates exist
         if not self.g_candidates:
             self.generate_g_candidates()
 
@@ -673,7 +685,6 @@ class FixedPointSolverGUI:
             idx = selection[0]
             selected_g_str = self.g_candidates[idx]
 
-        # Run the iteration (core) and show results
         try:
             iterations, last_x, converged = self.solve_fixed_point(
                 selected_g_str,
@@ -686,24 +697,19 @@ class FixedPointSolverGUI:
             messagebox.showerror("Error", str(e))
             return
 
-        # Update the top label text area with plain info (replace previous LaTeX use)
         self.latex_display.config(text=f"f(x) = {self.eq_var.get()}\ng(x) = {selected_g_str}")
 
-        # Plot selected g and animate cobweb (and show f(x) for reference)
         try:
             f_sym = sp.sympify(self.eq_var.get())
         except Exception:
             f_sym = None
 
-        # The animation will automatically play and finish frozen at last frame
         self._plot_selected_and_animate(f_sym, selected_g_str, iterations)
 
-# ----------------- Main -----------------
 def main():
     try:
         FixedPointSolverGUI()
     except Exception as e:
-        # Only show fatal messagebox if GUI exists
         try:
             messagebox.showerror("Fatal Error", f"An unhandled error occurred: {type(e).__name__}: {e}")
         except Exception:
