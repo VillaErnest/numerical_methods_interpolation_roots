@@ -24,18 +24,6 @@
             ]
         },
         {
-            "file": "brents_method.py",
-            "name": "Brent's Method",
-            "description": "Brent's Method is a hybrid root-finding algorithm that combines the reliability of the bisection method with the speed of the secant and inverse quadratic interpolation methods. It starts with two points where the function changes sign and then adaptively switches between these three techniques to find a root efficiently and accurately.",
-            "authors": [
-                "Ganzan, Patrick Allen",
-                "Hinosolango, Kyll",
-                "Platitas, Kirt",
-                "Roa, Ralph Joseph",
-                "Vale, Arxil John"
-            ]
-        },
-        {
             "file": "bisection_method.py",
             "name": "Bisection Method",
             "description": "The bisection method is a simple numerical technique for finding roots of a continuous function. It works by repeatedly narrowing an interval [a,b] where the function changes sign (i.e., f(a)⋅f(b)<0).",
@@ -104,6 +92,18 @@
                 "Engracia, Julius Caesar",
                 "Ampo, John Franz",
                 "Omundang, Kent Louie"
+            ]
+        },
+        {
+            "file": "brents_method.py",
+            "name": "Brent's Method",
+            "description": "Brent's Method is a hybrid root-finding algorithm that combines the reliability of the bisection method with the speed of the secant and inverse quadratic interpolation methods. It starts with two points where the function changes sign and then adaptively switches between these three techniques to find a root efficiently and accurately.",
+            "authors": [
+                "Ganzan, Patrick Allen",
+                "Hinosolango, Kyll",
+                "Platitas, Kirt",
+                "Roa, Ralph Joseph",
+                "Vale, Arxil John"
             ]
         }
     ]
